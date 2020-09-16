@@ -1,1 +1,1 @@
-echo("hai")
+print("hai")
