@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 curl  --header "X-Vault-Token: s.4dIFt7PzEmZjI1JXUr6usHHd" \
 			--request POST \
