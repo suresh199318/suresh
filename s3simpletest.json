@@ -1,0 +1,281 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+	"Parameters": {
+                   "RootDomainName": {
+                                      "Description": "Domain name for your website (example.com)",
+                                      "Type": "String"
+                                     }
+                  },
+	"Resources": {
+                  "S3Bucket": {
+                              "Type": "AWS::S3::Bucket",
+                               "Properties": {
+			                                 "AccessControl": "PublicRead",
+			                                 "BucketName" : { "Ref": "RootDomainName" },
+			                                  "BucketEncryption": {
+                                                                    "ServerSideEncryptionConfiguration": [
+                                                                         {
+                                                                           "ServerSideEncryptionByDefault": {
+                                                                              "SSEAlgorithm": "AES256"
+                                                                                                             }
+                                                                          }
+                                                                                                          ]
+                                                                   },
+			                                  "LifecycleConfiguration": {
+                                                                         "Rules": [
+                                                                                  {
+                                                                                     "Id": "GlacierRule1",
+                                                                                      "Prefix": "glacier",
+                                                                                      "Status": "Enabled",
+                                                                                      "ExpirationInDays": "365",
+                                                                                      "Transitions": [
+                                                                                                      {
+                                                                                                          "TransitionInDays": "1",
+                                                                                                          "StorageClass": "GLACIER"
+                                                                                                        }
+                                                                                                       ]
+                                                                                    }
+                                                                                    ]
+                                                                         },
+			                                   "LoggingConfiguration": {
+                                                                       "DestinationBucketName": {
+                                                                        "Ref": "LoggingBucket"
+                                                                                                }
+		                                                                },
+                                               "NotificationConfiguration": {
+                                                                             "TopicConfigurations": [
+                                                                                                     {
+					                                                                                  "Event": "s3:ObjectCreated:Put",
+                                                                                                       "Topic": { "Ref": "SNSTopic" }
+                                                                                                      }
+                                                                                                    ]
+                                                                            },		
+		                                       "ReplicationConfiguration": {
+                                                                           "Role": { "Fn::GetAtt": [
+                                                                                     "WorkItemBucketBackupRole",
+                                                                                       "Arn"
+                                                                                                    ]
+                                                                                    },
+                                                                           "Rules": [
+                                                                                       {
+                                                                                         "Destination": {
+                                                                                                       "Bucket": { "Fn::Join": [ "", [ "arn:aws:s3:::", 
+						                                                                                                  		{
+                                                                                                                                  "Ref": "ReplicationBucket"
+                                                                                                                                 } ]]},
+                                                                                                       "StorageClass": "STANDARD"
+                                                                                                         },
+                                                                                          "Id": "Backup",
+                                                                                           "Prefix": "",
+                                                                                           "Status": "Enabled"
+                                                                                        }
+                                                                                    ]
+                                                                             },
+                                                "VersioningConfiguration": {
+                                                                            "Status": "Enabled"
+                                                                              },
+                                                "WebsiteConfiguration": {
+                                                                         "IndexDocument": "index.html",
+                                                                         "ErrorDocument": "error.html"
+                                                                         }
+                                   },
+								    "DeletionPolicy": "Retain"
+								   },
+		"LoggingBucket": {
+        "Type": "AWS::S3::Bucket",
+            "Properties": {
+                            "AccessControl": "LogDeliveryWrite"
+                             }
+                       },
+        "ReplicationBucket": {
+            "Type": "AWS::S3::Bucket",
+		    "Properties": {
+            "AccessControl": "PublicRead",		 
+		   "VersioningConfiguration" : {
+                   "Status" : "Enabled"
+            }
+		}
+		},
+        "WorkItemBucketBackupRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "s3.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "BucketBackupPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "s3:GetReplicationConfiguration",
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RootDomainName"
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Action": [
+                                "s3:GetObjectVersion",
+                                "s3:GetObjectVersionAcl"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RootDomainName"
+                                            },
+                                            "/*"
+                                        ]
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Action": [
+                                "s3:ReplicateObject",
+                                "s3:ReplicateDelete"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Fn::Join": [
+                                                    "-",
+                                                    [
+                                                        {
+                                                            "Ref": "AWS::Region"
+                                                        },
+                                                        {
+                                                            "Ref": "AWS::StackName"
+                                                        },
+                                                        "replicationbucket"
+                                                    ]
+                                                ]
+                                            },
+                                            "/*"
+                                        ]
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "PolicyName": "BucketBackupPolicy",
+                "Roles": [
+                    {
+                        "Ref": "WorkItemBucketBackupRole"
+                    }
+                ]
+            }
+        },
+		"SNSTopic": {
+        "Type": "AWS::SNS::Topic",
+		      "Properties": { 
+		             "Subscription" :           [{
+                        "Endpoint" : "sureshmahalingam8@gmail.com",
+                        "Protocol" : "EMAIL"
+                     }]
+					 }
+                 },
+	    "SNSTopicPolicy": {
+           "Type": "AWS::SNS::TopicPolicy",
+           "Properties": {
+            "PolicyDocument": {
+                "Id": "MyTopicPolicy",
+                "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                        "Sid": "Statement-id",
+                        "Effect": "Allow",
+                        "Principal": { "Service": "s3.amazonaws.com" },
+                        "Action": "sns:Publish",
+                        "Resource": { "Ref": "SNSTopic" },
+                        "Condition": {
+                            "ArnLike": {
+                                "aws:SourceArn": { "Fn::Join": [ "", [ "arn:aws:s3:::", 
+								{
+                                            "Ref": "RootDomainName"
+                                        } ]]} }
+                        }
+                    }
+                  ]
+               },
+            "Topics": [ { "Ref": "SNSTopic" } ]
+           }
+        },
+      "BucketPolicy": {	
+        "Type": "AWS::S3::BucketPolicy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Id": "MyPolicy",
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "PublicReadForGetBucketObjects",
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "arn:aws:s3:::",
+                                        {
+                                            "Ref": "RootDomainName"
+                                        },
+                                        "/*"
+                                    ]
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "Bucket": {
+                    "Ref": "S3Bucket"
+                }
+            }
+       }
+	}
+}
+	
+			
+			
+             
+           
+            
