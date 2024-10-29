@@ -1,3 +1,5 @@
 #!bin/bash
 
 suresh is here
+
+Welcome to india
